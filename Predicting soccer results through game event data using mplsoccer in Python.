@@ -1,0 +1,199 @@
+!pip install mplsoccer
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import seaborn as sns
+import matplotlib.pyplot as plt
+from mplsoccer import Pitch, Sbopen, VerticalPitch
+import os
+
+# importing the data parser through mplsoccer (alternative to the official statsbombpy package)
+parser  = Sbopen()
+
+
+competitions = parser.competition()
+competitions[competitions.competition_name=='Bundesliga']
+
+
+parser.match(competition_id =1238,season_id = 108)
+
+
+df, df_related, df_freeze, df_tactics = parser.event(3827767)
+
+
+# to take a better look at player pass map
+def generatePlayerPassMap(player_name):
+    player_filter = (df.type_name == 'Pass') & (df.player_name == player_name)
+    player_df = df.loc[player_filter, ['x', 'y', 'end_x', 'end_y']]
+
+    pitch = Pitch(line_color='white',pitch_color='#02540b')
+    fig, ax = pitch.grid(grid_height=0.9, title_height=0.06, axis=False,endnote_height=0.04, title_space=0, endnote_space=0)
+    for i in player_df.index:
+        x = player_df['x'][i]
+        y = player_df['y'][i]
+        dx = player_df['end_x'][i] - player_df['x'][i]
+        dy = player_df['end_y'][i] - player_df['y'][i]
+        if df['outcome_name'][i] != 'Incomplete':
+            ax['pitch'].arrow(x,y,dx,dy,color='#0dff00',length_includes_head=True,head_width=1,head_length=0.8)
+            pitch.scatter(player_df['x'][i],player_df['y'][i],color='#0dff00',ax=ax['pitch'])
+        else:
+            ax['pitch'].arrow(x,y,dx,dy,color='red',length_includes_head=True,head_width=1,head_length=0.8)
+            pitch.scatter(player_df['x'][i],player_df['y'][i],color='red',ax=ax['pitch'])
+    fig.suptitle(player_name+" passes", fontsize = 20)
+
+
+
+# we can do this for all players individually
+generatePlayerPassMap("Joshua Kimmich")
+
+
+def generatePlayerPassMapsGrid(team_name):
+    # filtering to passes by team_name players
+    team_passes = (df.type_name == 'Pass') & (df.team_name == team_name) & (df.sub_type_name != "Throw-in")
+    # selecting only relevant columsn for the pass map
+    team_passes = df.loc[team_passes, ['x', 'y', 'end_x', 'end_y', 'player_name','outcome_name']]
+    #get the list of all players who made a pass
+    names = team_passes['player_name'].unique()
+    #draw 4x4 pitches
+    pitch = Pitch(line_color='white',pitch_color='#02540b',pad_top=20)
+    fig, axs = pitch.grid(ncols = 4, nrows = 4, grid_height=0.85, title_height=0.06, axis=False,endnote_height=0.04, title_space=0.04, endnote_space=0.01)
+    plt.figure(figsize=(14,10))
+    #for each player
+    for name, ax in zip(names, axs['pitch'].flat[:len(names)]):
+        #take only passes by this player
+        player_df = team_passes.loc[team_passes["player_name"] == name]
+        #put player name over the plot
+        ax.text(60, -10, name.split()[0]+":"+str(len(player_df))+" passes",ha='center', va='center', fontsize=14)
+        #scatter -  plots the player position with 0.2 alpha(visibility)
+        #pitch.scatter(player_df.x, player_df.y, alpha = 0.2, s = 50, color = "blue", ax=ax)
+        #plot pass arrows
+        #pitch.arrows(player_df.x, player_df.y,player_df.end_x, player_df.end_y, color = "blue", ax=ax, width=1)
+        # plotting arrows one by one, red or green based on if its incomplete or not
+        for i in player_df.index:
+            x=player_df['x'][i]
+            y = player_df['y'][i]
+            dx = player_df['end_x'][i] - player_df['x'][i]
+            dy = player_df['end_y'][i] - player_df['y'][i]
+            if df['outcome_name'][i] != 'Incomplete':
+                ax.arrow(x,y,dx,dy,color='#0dff00',length_includes_head=True,head_width=1,head_length=0.8)
+                pitch.scatter(player_df['x'][i],player_df['y'][i],color='#0dff00',ax=ax)
+            else:
+                ax.arrow(x,y,dx,dy,color='red',length_includes_head=True,head_width=1,head_length=0.8)
+                pitch.scatter(player_df['x'][i],player_df['y'][i],color='red',ax=ax)
+
+
+    #We have more than enough pitches - remove them
+    for ax in axs['pitch'][-1, 25 - len(names):]:
+        ax.remove(ax)
+
+    #Another way to set title using mplsoccer
+    axs['title'].text(0.5, 0.5, team_name+" pass maps", ha='center', va='center', fontsize=20)
+    
+    
+ # calling the function for both teams
+ generatePlayerPassMapsGrid('Bayern Munich')
+ generatePlayerPassMapsGrid('Borussia Dortmund')
+
+
+def generatePlayerHeatMap(player_name):
+    player_filter = (df.type_name == 'Pass') & (df.player_name == player_name)
+    player_df = df.loc[player_filter, ['x', 'y', 'end_x', 'end_y']]
+
+    pitch = Pitch(line_color='white',pitch_color='#02540b')
+    fig, ax = pitch.grid(grid_height=0.9, title_height=0.06, axis=False,endnote_height=0.04, title_space=0, endnote_space=0)
+    #Create the heatmap
+    pitch.kdeplot(
+        x=player_df['x'],
+        y=player_df['y'],
+        shade = True,
+        shade_lowest=False,
+        alpha=.5,
+        n_levels=10,
+        cmap = 'plasma',
+        ax=ax['pitch']
+        )
+    fig.suptitle(player_name+" Heatmap", fontsize = 20)
+ 
+
+# calling the function
+# we can do this for all players individually
+generatePlayerHeatMap("Joshua Kimmich")
+
+
+def generatePlayerHeatmapGrid(team_name):
+    # filtering to passes by team_name players
+    team_passes = (df.type_name == 'Pass') & (df.team_name == team_name) & (df.sub_type_name != "Throw-in")
+    # selecting only relevant columsn for the pass map
+    team_passes = df.loc[team_passes, ['x', 'y', 'end_x', 'end_y', 'player_name','outcome_name']]
+    #get the list of all players who made a pass
+    names = team_passes['player_name'].unique()
+    #draw 4x4 pitches
+    pitch = Pitch(line_color='white',pitch_color='#02540b')
+    fig, axs = pitch.grid(ncols = 4, nrows = 4, grid_height=0.85, title_height=0.06, axis=False,endnote_height=0.04, title_space=0.04, endnote_space=0.01)
+    plt.figure(figsize=(14,10))
+    #for each player
+    for name, ax in zip(names, axs['pitch'].flat[:len(names)]):
+        #take only passes by this player
+        player_df = team_passes.loc[team_passes["player_name"] == name]
+        #put player name over the plot
+        ax.text(60, -10, name.split()[-1],ha='center', va='center', fontsize=14)
+        #Create the heatmap
+        pitch.kdeplot(
+            x=player_df['x'],
+            y=player_df['y'],
+            shade = True,
+            shade_lowest=False,
+            alpha=.5,
+            n_levels=10,
+            cmap = 'plasma',
+            ax=ax
+        )
+    #We have more than enough pitches - remove them
+    for ax in axs['pitch'][-1, 25 - len(names):]:
+        ax.remove(ax)
+    
+    #Another way to set title using mplsoccer
+    axs['title'].text(0.5, 0.5, team_name+" Heatmaps", ha='center', va='center', fontsize=20)
+    
+    
+    
+    
+    
+generatePlayerHeatmapGrid("Bayern Munich")
+generatePlayerHeatmapGrid("Borussia Dortmund")
+
+
+def generateTeamxGDataFrame(team_name):
+    xg = df[['team_name','minute','type_name','shot_statsbomb_xg','x','y']]
+    team_xg = xg[xg['team_name']==team_name].reset_index()
+    return team_xg
+    
+ def generatexGPlot(team_name):
+    team_xg = generateTeamxGDataFrame(team_name)
+    #xg_events[xg_events.shot_statsbomb_xg.isna()==False]
+    plt.clf()
+    sns.lineplot(data=team_xg,x='minute',y='shot_statsbomb_xg',ci=None)
+    plt.xlabel("Minutes")
+    plt.ylabel("xG")
+    plt.title("xG/Minute for "+ team_name)
+    plt.show()
+    
+    
+    
+ #calling the functions
+ generatexGPlot('Bayern Munich') # penalty shootout at the end
+ generatexGPlot('Borussia Dortmund')
+
+
+def generateTeamShotMap(team_name):
+    team1_xg = generateTeamxGDataFrame(team_name)
+    team1_shots = team1_xg[team1_xg.type_name=='Shot']
+    pitch = Pitch(line_color='white',pitch_color='#02540b',half=True)
+    fig, ax = pitch.grid(grid_height=0.9, title_height=0.06, axis=False,endnote_height=0.04, title_space=0, endnote_space=0)
+    pitch.scatter(team1_shots.x, team1_shots.y, alpha = 0.3, s = team1_shots.shot_statsbomb_xg*5000, color = "red", ax=ax['pitch'],)
+    ax['pitch'].text(80, 5, team_name + ' shots',color='white',size=20)
+ 
+
+
+# calling the functions
+generateTeamShotMap('Bayern Munich')
+generateTeamShotMap('Borussia Dortmund')
